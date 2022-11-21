@@ -137,7 +137,7 @@ class SPADEGenerator(BaseNetwork):
             x = self.up_4(x, seg, input_instances, noise, sketch)
 
         x = self.conv_img(F.leaky_relu(x, 2e-1))
-        x = F.tanh(x)
+        x = torch.tanh(x)
 
         return x
 

@@ -5,3 +5,6 @@ results/
 *.zip
 *.pkl
 *.pyc
+node_modules
+datasets
+__pycache__

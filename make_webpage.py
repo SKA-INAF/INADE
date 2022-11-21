@@ -12,17 +12,17 @@ from models.pix2pix_model import Pix2PixModel
 from util.visualizer import Visualizer
 from util import html
 from PIL import Image
+from glob import glob
 import torchvision.transforms.functional as F
 
 label_colors = [[0.000, 0.447, 0.741], [0.850, 0.325, 0.098], 
                 [0.929, 0.694, 0.125], [0.494, 0.184, 0.556]]
 
+max_images = 100
+
 opt = TestOptions().parse()
 
-dataloader = data.create_dataloader(opt)
-
-model = Pix2PixModel(opt)
-model.eval()
+# dataloader = data.create_dataloader(opt)
 
 visualizer = Visualizer(opt)
 
@@ -33,25 +33,28 @@ webpage = html.HTML(web_dir,
                     'Experiment = %s, Subfolder = %s' %
                     (opt.name, opt.subfolder))
 
-
 # test
-for i, data_i in enumerate(dataloader):
-    if i * opt.batchSize >= opt.how_many:
-        break
+for img_dir in glob(os.path.join(web_dir, 'images/*'))[:max_images]:
 
-    generated = model(data_i, mode='inference')
+    visualizer.save_webpage(webpage, img_dir)
+#create js file named serve.js
+with open(os.path.join(web_dir, 'serve.js'), 'w') as file:
+    file.write("""
+const express = require('express')
+const app = express()
+const path = require('path');
 
-    img_path = data_i['path']
-    for b in range(generated.shape[0]):
-        print('process image... %s' % img_path[b])
-        image = Image.open(img_path[b])
-        im_tensor = F.to_tensor(image) * 2 - 1
-        label_path = img_path[b].replace('images', 'masks')
-        label = Image.open(label_path) 
-        lbl_tensor = F.to_tensor(label) * 2 - 1
-        visuals = OrderedDict([('original_image', im_tensor),
-                               ('input_label', lbl_tensor),
-                               ('synthesized_image', generated[b])])
-        visualizer.save_images(webpage, visuals, img_path[b:b + 1])
+const port = 3000
+
+app.use(express.static(__dirname + '/images'));
+
+app.get('/', (req, res) => {
+res.sendFile(path.join(__dirname, '/index.html'));
+})
+
+app.listen(port, () => {
+console.log(`Server listening on port ${port}`)
+})
+""".strip())
 
 webpage.save()

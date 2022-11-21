@@ -18,6 +18,7 @@ class HTML:
         self.title = title
         self.web_dir = web_dir
         self.html_name = html_name
+        self.img_count = 0
         self.img_dir = os.path.join(self.web_dir, 'images')
         if len(self.web_dir) > 0 and not os.path.exists(self.web_dir):
             os.makedirs(self.web_dir)
@@ -26,6 +27,7 @@ class HTML:
 
         self.doc = dominate.document(title=title)
         with self.doc:
+            h1(title)
             h1(datetime.datetime.now().strftime("%I:%M%p on %B %d, %Y"))
         if refresh > 0:
             with self.doc.head:
@@ -50,9 +52,23 @@ class HTML:
                     with td(style="word-wrap: break-word;", halign="center", valign="top"):
                         with p():
                             with a(href=os.path.join('images', link)):
-                                img(style="width:%dpx" % (width), src=os.path.join('images', im))
+                                img(style="width:%dpx" % (width), src=im)
                             br()
                             p(txt.encode('utf-8'))
+                            self.img_count += 1
+    
+    def add_images_v2(self, ims, txts, links, width=512):
+        self.add_table()
+        with self.t:
+            with tr():
+                for im, txt, link in zip(ims, txts, links):
+                    with td(style="word-wrap: break-word;", halign="center", valign="top"):
+                        with p():
+                            with a(href=link):
+                                img(style="width:%dpx" % (width), src=im)
+                            br()
+                            p(txt)
+                            self.img_count += 1
 
     def save(self):
         html_file = os.path.join(self.web_dir, self.html_name)

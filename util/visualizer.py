@@ -9,6 +9,8 @@ import time
 from . import util
 from . import html
 import scipy.misc
+from pathlib import Path
+from glob import glob
 try:
     from StringIO import StringIO  # Python 2.7
 except ImportError:
@@ -137,10 +139,10 @@ class Visualizer():
     def convert_visuals_to_numpy(self, visuals):
         for key, t in visuals.items():
             tile = self.opt.batchSize > 8
-            if 'input_label' == key:
-                t = util.tensor2label(t, self.opt.label_nc + 2, tile=tile)
-            else:
-                t = util.tensor2im(t, tile=tile)
+            # if 'input_label' == key:
+            #     t = util.tensor2label(t, self.opt.label_nc + 2, tile=tile)
+            # else:
+            t = util.tensor2im(t, tile=tile)
             visuals[key] = t
         return visuals
 
@@ -158,11 +160,37 @@ class Visualizer():
         links = []
 
         for label, image_numpy in visuals.items():
-            image_name = os.path.join(label, '%s.png' % (name))
+            # image_name = os.path.join(label, '%s.png' % (name))
+            image_name = os.path.join(name, '%s.png' % (label))
             save_path = os.path.join(image_dir, image_name)
             util.save_image(image_numpy, save_path, create_dir=True)
 
             ims.append(image_name)
             txts.append(label)
             links.append(image_name)
-        webpage.add_images(ims, txts, links, width=self.win_size)
+            
+        if webpage.img_count <= 100:
+            webpage.add_images(ims, txts, links, width=self.win_size)
+    
+    # create webpage that summarizes the all results       
+    def save_webpage(self, webpage, image_dir):
+        
+        ims = []
+        txts = []
+        links = []
+
+        webpage.add_header(Path(image_dir).stem)
+
+        for image_name in ['input_label', 'synthesized_image', 'original_image']:
+
+            image_path = (Path(image_dir) / image_name).with_suffix('.png')
+            label = Path(image_path).stem
+            image_name = Path(image_path).parent.stem / Path(label)
+
+            # image_name = os.path.join(Path(image_path).parent.stem, '%s.png' % (label))
+
+            ims.append(image_name.with_suffix('.png'))
+            txts.append(label)
+            links.append(image_name.with_suffix('.png'))
+
+        webpage.add_images_v2(ims, txts, links, width=self.win_size)

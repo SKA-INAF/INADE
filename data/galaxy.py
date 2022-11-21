@@ -1,0 +1,186 @@
+from torchvision.datasets import CocoDetection
+from pathlib import Path
+import torch
+import torch.utils.data
+import json
+from pycocotools import mask as coco_mask
+from . import transforms as T
+import torchvision.transforms.functional as F 
+
+class GalaxyDetection(CocoDetection):
+    def __init__(self, img_folder, ann_file, transforms, return_masks):
+        super(GalaxyDetection, self).__init__(img_folder, ann_file)
+        self._transforms = transforms
+        self.prepare = ConvertGalaxyPolysToMask(return_masks)
+
+    def __getitem__(self, idx):
+        img, target = super(GalaxyDetection, self).__getitem__(idx)
+        image_id = self.ids[idx]
+        try:
+            img_path = Path(img.filename)
+        except:
+            img_path = None
+        target = {'image_id': image_id, 'annotations': target}
+        img, target = self.prepare(img, target)
+        if self._transforms is not None:
+            img, target = self._transforms(img, target)
+        target['path'] = img_path
+        return img, target
+
+
+def convert_galaxy_poly_to_mask(segmentations, height, width):
+    masks = []
+    for polygons in segmentations:
+        if len(polygons[0]) <= 4:
+            raise Exception("Wrong number of points in polygon")
+
+        rles = coco_mask.frPyObjects(polygons, height, width)
+        mask = coco_mask.decode(rles)
+        if len(mask.shape) < 3:
+            mask = mask[..., None]
+        mask = torch.as_tensor(mask, dtype=torch.uint8)
+        mask = mask.any(dim=2)
+        masks.append(mask)
+    if masks:
+        masks = torch.stack(masks, dim=0)
+    else:
+        masks = torch.zeros((0, height, width), dtype=torch.uint8)
+    return masks
+
+def check_annotation_integrity(annotation_path):
+    '''
+    Check if segmentation coordinates have length 4
+    In this case, they will be treated as bounding boxes, which is wrong
+    '''
+    with open(annotation_path) as j:
+        annotations = json.load(j)['annotations']
+    for ann in annotations:
+        if len(ann['segmentation'][0]) == 4:
+            print(ann['segmentation'][0])
+
+class ConvertGalaxyPolysToMask(object):
+    def __init__(self, return_masks=False):
+        self.return_masks = return_masks
+
+    def __call__(self, image, target):
+        w, h = image.size
+
+        image_id = target["image_id"]
+        image_id = torch.tensor([image_id])
+
+        anno = target["annotations"]
+
+        anno = [obj for obj in anno if 'iscrowd' not in obj or obj['iscrowd'] == 0]
+
+        boxes = [obj["bbox"] for obj in anno]
+        # guard against no boxes via resizing
+        boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
+        boxes[:, 2:] += boxes[:, :2]
+        boxes[:, 0::2].clamp_(min=0, max=w)
+        boxes[:, 1::2].clamp_(min=0, max=h)
+
+        classes = [obj["category_id"] for obj in anno]
+        classes = torch.tensor(classes, dtype=torch.int64)
+
+        if self.return_masks:
+            segmentations = [obj["segmentation"] for obj in anno]
+            # TODO REmove
+            for s in segmentations:
+                if len(s[0]) < 4:
+                    with open('wrong_masks.txt', 'a') as wm:
+                        wm.write(f'{image_id}\n')
+            masks = convert_galaxy_poly_to_mask(segmentations, h, w)
+
+        keypoints = None
+        if anno and "keypoints" in anno[0]:
+            keypoints = [obj["keypoints"] for obj in anno]
+            keypoints = torch.as_tensor(keypoints, dtype=torch.float32)
+            num_keypoints = keypoints.shape[0]
+            if num_keypoints:
+                keypoints = keypoints.view(num_keypoints, -1, 3)
+
+        keep = (boxes[:, 3] > boxes[:, 1]) & (boxes[:, 2] > boxes[:, 0])
+        boxes = boxes[keep]
+        classes = classes[keep]
+        if self.return_masks:
+            masks = masks[keep]
+        if keypoints is not None:
+            keypoints = keypoints[keep]
+
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = classes
+        if self.return_masks:
+            target["masks"] = masks
+        target["image_id"] = image_id
+        if keypoints is not None:
+            target["keypoints"] = keypoints
+
+        # for conversion to coco api
+        area = torch.tensor([obj["area"] for obj in anno])
+        iscrowd = torch.tensor([obj["iscrowd"] if "iscrowd" in obj else 0 for obj in anno])
+        target["area"] = area[keep]
+        target["iscrowd"] = iscrowd[keep]
+
+        target["orig_size"] = torch.as_tensor([int(h), int(w)])
+        target["size"] = torch.as_tensor([int(h), int(w)])
+
+        return image, target
+
+def inv_normalize(tensor, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+    # return T.Normalize(
+    #     mean= [-m/s for m, s in zip(mean, std)],
+    #     std= [1/s for s in std]
+    # )
+    return F.normalize(
+        tensor,
+        mean= [-m/s for m, s in zip(mean, std)],
+        std= [1/s for s in std]
+    )
+
+def make_galaxy_transforms(image_set):
+
+    normalize = T.Compose([
+        T.ToTensor(),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+
+    if image_set == 'train':
+        return T.Compose([
+            T.RandomHorizontalFlip(),
+            T.RandomResize([132], max_size=132),
+            # T.RandomSelect(
+            #     T.RandomResize(scales, max_size=1333),
+            #     T.Compose([
+            #         T.RandomResize([400, 500, 600]),
+            #         T.RandomSizeCrop(384, 600),
+            #         T.RandomResize(scales, max_size=1333),
+            #     ])
+            # ),
+            normalize,
+        ])
+
+    if image_set in ['val', 'test']:
+        return T.Compose([
+            T.RandomResize([132], max_size=132),
+            # T.RandomResize([800], max_size=1333),
+            normalize,
+        ])
+
+    raise ValueError(f'unknown {image_set}')
+
+
+def build(image_set, data_path: str, masks: bool):
+    root = Path(data_path)
+    assert root.exists(), f'provided data path {root} does not exist'
+    PATHS = {
+        "train": (root / "train", root / 'annotations' / 'train.json'),
+        "val": (root / "val", root / 'annotations' / 'val.json'),
+        "test": (root / "test", root / 'annotations' / 'test.json'),
+    }
+
+    img_folder, ann_file = PATHS[image_set]
+    dataset = GalaxyDetection(img_folder, ann_file, transforms=make_galaxy_transforms(image_set), return_masks=masks)
+    return dataset

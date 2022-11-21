@@ -1,0 +1,86 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Make instances",
+            "type": "python",
+            "request": "launch",
+            "program": "make_instances.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--path", "datasets/ADE20K",
+                "--dataset", "ade20k",
+            ]
+        },
+        {
+            "name": "Test",
+            "type": "python",
+            "request": "launch",
+            "program": "test.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name", "rg-test",
+                "--batchSize", "8",
+                "--dataset_mode", "mask",
+                // "--norm_mode", "inade",
+                // "--serial_batches", 
+                "--use_vae", 
+                "--no_instance", 
+                // "--dataroot", "datasets/extended_only"
+                "--dataroot", "datasets/extended_only",
+                "--subfolder", "extended_only"
+                // "--dataroot", "datasets/radiogalaxy"
+            ]
+        },
+        {
+            "name": "Webpage",
+            "type": "python",
+            "request": "launch",
+            "program": "make_webpage.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name", "rg-test",
+                "--dataset_mode", "radiogalaxy",
+                "--subfolder", "test_latest",
+                // "--norm_mode", "inade",
+                // "--serial_batches", 
+            ]
+        },
+        {
+            "name": "FID",
+            "type": "python",
+            "request": "launch",
+            "program": "compute_fid.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name", "rg-test",
+                "--subfolder", "extended_only",
+            ]
+        },
+        {
+            "name": "Train",
+            "type": "python",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--name", "extended-only-test",
+                "--batchSize", "8",
+                "--dataset_mode", "radiogalaxy",
+                // "--norm_mode", "inade",
+                "--serial_batches", 
+                "--use_vae", 
+                "--no_instance", 
+                "--dataroot", "datasets/extended_only"
+            ]
+        }
+    ]
+}
